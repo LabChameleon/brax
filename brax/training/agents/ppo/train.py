@@ -103,6 +103,7 @@ def train(
     randomization_fn: Optional[
         Callable[[base.System, jnp.ndarray], Tuple[base.System, base.System]]
     ] = None,
+    return_best_eval_rew_and_params: bool = False,
 ):
   """PPO training."""
   assert batch_size * num_minibatches % num_envs == 0
@@ -163,11 +164,15 @@ def train(
     wrap_for_training = envs_v1.wrappers.wrap_for_training
 
   env = wrap_for_training(
-      environment,
-      episode_length=episode_length,
-      action_repeat=action_repeat,
-      randomization_fn=v_randomization_fn,
+    environment,
+    episode_length=episode_length,
+    action_repeat=action_repeat,
+    randomization_fn=v_randomization_fn,
   )
+
+  if return_best_eval_rew_and_params:
+    best_params = None
+    best_eval_rew = -np.inf
 
   reset_fn = jax.jit(jax.vmap(env.reset))
   key_envs = jax.random.split(key_env, num_envs // process_count)
@@ -358,6 +363,9 @@ def train(
         training_metrics={})
     logging.info(metrics)
     progress_fn(0, metrics)
+    if best_eval_rew < metrics['eval/episode_reward']:
+      best_eval_rew = metrics['eval/episode_reward']
+      best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
   training_metrics = {}
   training_walltime = 0
@@ -391,6 +399,9 @@ def train(
       params = _unpmap(
           (training_state.normalizer_params, training_state.params.policy))
       policy_params_fn(current_step, make_policy, params)
+      if best_eval_rew < metrics['eval/episode_reward']:
+        best_eval_rew = metrics['eval/episode_reward']
+        best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
   total_steps = current_step
   assert total_steps >= num_timesteps
@@ -402,4 +413,7 @@ def train(
       (training_state.normalizer_params, training_state.params.policy))
   logging.info('total steps: %s', total_steps)
   pmap.synchronize_hosts()
-  return (make_policy, params, metrics)
+  if not return_best_eval_rew_and_params:
+    return (make_policy, params, metrics)
+  else:
+    return (make_policy, params, metrics, best_eval_rew, best_eval_params)
