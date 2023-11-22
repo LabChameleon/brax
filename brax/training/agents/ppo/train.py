@@ -171,8 +171,9 @@ def train(
   )
 
   if return_best_eval_rew_and_params:
-    best_params = None
     best_eval_rew = -np.inf
+    best_eval_rew_std = None
+    best_eval_params = None
 
   reset_fn = jax.jit(jax.vmap(env.reset))
   key_envs = jax.random.split(key_env, num_envs // process_count)
@@ -365,6 +366,8 @@ def train(
     progress_fn(0, metrics)
     if best_eval_rew < metrics['eval/episode_reward']:
       best_eval_rew = metrics['eval/episode_reward']
+      best_eval_rew_std = metrics['eval/episode_reward_std']
+      pmap.assert_is_replicated(training_state)
       best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
   training_metrics = {}
@@ -400,8 +403,9 @@ def train(
           (training_state.normalizer_params, training_state.params.policy))
       policy_params_fn(current_step, make_policy, params)
       if best_eval_rew < metrics['eval/episode_reward']:
-        best_eval_rew = metrics['eval/episode_reward']
-        best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
+          best_eval_rew = metrics['eval/episode_reward']
+          best_eval_rew_std = metrics['eval/episode_reward_std']
+          best_eval_params = params
 
   total_steps = current_step
   assert total_steps >= num_timesteps
@@ -416,4 +420,4 @@ def train(
   if not return_best_eval_rew_and_params:
     return (make_policy, params, metrics)
   else:
-    return (make_policy, params, metrics, best_eval_rew, best_eval_params)
+    return (make_policy, params, metrics, best_eval_rew, best_eval_rew_std, best_eval_params)
