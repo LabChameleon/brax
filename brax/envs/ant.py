@@ -145,6 +145,7 @@ class Ant(PipelineEnv):
 
   def __init__(
       self,
+      forward_reward_weight=1.0,
       ctrl_cost_weight=0.5,
       use_contact_forces=False,
       contact_cost_weight=5e-4,
@@ -178,6 +179,7 @@ class Ant(PipelineEnv):
 
     super().__init__(sys=sys, backend=backend, **kwargs)
 
+    self._forward_reward_weight = forward_reward_weight
     self._ctrl_cost_weight = ctrl_cost_weight
     self._use_contact_forces = use_contact_forces
     self._contact_cost_weight = contact_cost_weight
