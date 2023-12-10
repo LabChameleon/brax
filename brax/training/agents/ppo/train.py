@@ -105,6 +105,8 @@ def train(
         Callable[[base.System, jnp.ndarray], Tuple[base.System, base.System]]
     ] = None,
     return_best_eval_rew_and_params: bool = False,
+    best_eval_reward_weight: float = 1.0,
+    best_eval_stability_weight: float = 0.0,
 ):
   """PPO training."""
   assert batch_size * num_minibatches % num_envs == 0
@@ -172,7 +174,8 @@ def train(
   )
 
   if return_best_eval_rew_and_params:
-    best_eval_rew = -np.inf
+    best_eval_performance = -np.inf
+    best_eval_rew = None
     best_eval_rew_std = None
     best_eval_params = None
 
@@ -350,28 +353,34 @@ def train(
   )
 
   evaluator = acting.Evaluator(
-      eval_env,
-      functools.partial(make_policy, deterministic=deterministic_eval),
-      num_eval_envs=num_eval_envs,
-      episode_length=episode_length,
-      action_repeat=action_repeat,
-      key=eval_key)
+    eval_env,
+    functools.partial(make_policy, deterministic=deterministic_eval),
+    num_eval_envs=num_eval_envs,
+    episode_length=episode_length,
+    action_repeat=action_repeat,
+    key=eval_key
+  )
 
   # Run initial eval
   metrics = {}
   if process_id == 0 and num_evals > 1:
     metrics = evaluator.run_evaluation(
-        _unpmap(
-            (training_state.normalizer_params, training_state.params.policy)),
-        training_metrics={})
+      _unpmap(
+        (training_state.normalizer_params, training_state.params.policy)),
+      training_metrics={}
+    )
     logging.info(metrics)
     progress_fn(0, metrics)
     if return_best_eval_rew_and_params:
-        if best_eval_rew < metrics['eval/episode_reward']:
-          best_eval_rew = metrics['eval/episode_reward']
-          best_eval_rew_std = metrics['eval/episode_reward_std']
-          pmap.assert_is_replicated(training_state)
-          best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
+      best_eval_rew = metrics['eval/episode_reward']
+      best_eval_rew_std = metrics['eval/episode_reward_std']
+      performance = best_eval_reward_weight * best_eval_rew - best_eval_stability_weight * best_eval_rew_std
+      if best_eval_performance < performance:
+        best_eval_performance = performance
+        best_eval_rew = best_eval_rew
+        best_eval_rew_std = best_eval_rew_std
+        pmap.assert_is_replicated(training_state)
+        best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
   training_metrics = {}
   training_walltime = 0
@@ -384,32 +393,35 @@ def train(
       epoch_key, local_key = jax.random.split(local_key)
       epoch_keys = jax.random.split(epoch_key, local_devices_to_use)
       (training_state, env_state, training_metrics) = (
-          training_epoch_with_timing(training_state, env_state, epoch_keys)
+        training_epoch_with_timing(training_state, env_state, epoch_keys)
       )
       current_step = int(_unpmap(training_state.env_steps))
 
       key_envs = jax.vmap(
-          lambda x, s: jax.random.split(x[0], s),
-          in_axes=(0, None))(key_envs, key_envs.shape[1])
+        lambda x, s: jax.random.split(x[0], s),
+        in_axes=(0, None))(key_envs, key_envs.shape[1])
       # TODO: move extra reset logic to the AutoResetWrapper.
       env_state = reset_fn(key_envs) if num_resets_per_eval > 0 else env_state
 
     if process_id == 0:
       # Run evals.
       metrics = evaluator.run_evaluation(
-          _unpmap(
-              (training_state.normalizer_params, training_state.params.policy)),
-          training_metrics)
+        _unpmap((training_state.normalizer_params, training_state.params.policy)),
+        training_metrics
+      )
       logging.info(metrics)
       progress_fn(current_step, metrics)
-      params = _unpmap(
-          (training_state.normalizer_params, training_state.params.policy))
+      params = _unpmap((training_state.normalizer_params, training_state.params.policy))
       policy_params_fn(current_step, make_policy, params)
       if return_best_eval_rew_and_params:
-          if best_eval_rew < metrics['eval/episode_reward']:
-              best_eval_rew = metrics['eval/episode_reward']
-              best_eval_rew_std = metrics['eval/episode_reward_std']
-              best_eval_params = params
+        best_eval_rew = metrics['eval/episode_reward']
+        best_eval_rew_std = metrics['eval/episode_reward_std']
+        performance = best_eval_reward_weight * best_eval_rew - best_eval_stability_weight * best_eval_rew_std
+        if best_eval_performance < performance:
+          best_eval_performance = performance
+          best_eval_rew = best_eval_rew
+          best_eval_rew_std = best_eval_rew_std
+          best_eval_params = params
 
   total_steps = current_step
   assert total_steps >= num_timesteps
@@ -417,11 +429,17 @@ def train(
   # If there was no mistakes the training_state should still be identical on all
   # devices.
   pmap.assert_is_replicated(training_state)
-  params = _unpmap(
-      (training_state.normalizer_params, training_state.params.policy))
+  params = _unpmap((training_state.normalizer_params, training_state.params.policy))
   logging.info('total steps: %s', total_steps)
   pmap.synchronize_hosts()
   if not return_best_eval_rew_and_params:
     return (make_policy, params, metrics)
   else:
-    return (make_policy, params, metrics, best_eval_rew, best_eval_rew_std, best_eval_params)
+    return (
+      make_policy,
+      best_eval_params,
+      metrics,
+      best_eval_performance,
+      best_eval_rew,
+      best_eval_rew_std,
+    )
