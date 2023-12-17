@@ -376,8 +376,8 @@ def train(
                     best_eval_stability_weight * metrics['eval/episode_reward_std']
       if best_eval_performance < performance:
         best_eval_performance = performance
-        best_eval_rew = metrics["eval_episode_reward"]
-        best_eval_rew_std = metrics["eval_episode_reward_std"]
+        best_eval_rew = metrics["eval/episode_reward"]
+        best_eval_rew_std = metrics["eval/episode_reward_std"]
         pmap.assert_is_replicated(training_state)
         best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
@@ -416,8 +416,8 @@ def train(
                     best_eval_stability_weight * metrics['eval/episode_reward_std']
       if best_eval_performance < performance:
           best_eval_performance = performance
-          best_eval_rew = metrics["eval_episode_reward"]
-          best_eval_rew_std = metrics["eval_episode_reward_std"]
+          best_eval_rew = metrics["eval/episode_reward"]
+          best_eval_rew_std = metrics["eval/episode_reward_std"]
           best_eval_params = params
 
   total_steps = current_step
