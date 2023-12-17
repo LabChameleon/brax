@@ -372,13 +372,12 @@ def train(
     logging.info(metrics)
     progress_fn(0, metrics)
     if return_best_eval_rew_and_params:
-      best_eval_rew = metrics['eval/episode_reward']
-      best_eval_rew_std = metrics['eval/episode_reward_std']
-      performance = best_eval_reward_weight * best_eval_rew - best_eval_stability_weight * best_eval_rew_std
+      performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
+                    best_eval_stability_weight * metrics['eval/episode_reward_std']
       if best_eval_performance < performance:
         best_eval_performance = performance
-        best_eval_rew = best_eval_rew
-        best_eval_rew_std = best_eval_rew_std
+        best_eval_rew = metrics["eval_episode_reward"]
+        best_eval_rew_std = metrics["eval_episode_reward_std"]
         pmap.assert_is_replicated(training_state)
         best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
@@ -413,14 +412,12 @@ def train(
       progress_fn(current_step, metrics)
       params = _unpmap((training_state.normalizer_params, training_state.params.policy))
       policy_params_fn(current_step, make_policy, params)
-      if return_best_eval_rew_and_params:
-        best_eval_rew = metrics['eval/episode_reward']
-        best_eval_rew_std = metrics['eval/episode_reward_std']
-        performance = best_eval_reward_weight * best_eval_rew - best_eval_stability_weight * best_eval_rew_std
-        if best_eval_performance < performance:
+      performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
+                    best_eval_stability_weight * metrics['eval/episode_reward_std']
+      if best_eval_performance < performance:
           best_eval_performance = performance
-          best_eval_rew = best_eval_rew
-          best_eval_rew_std = best_eval_rew_std
+          best_eval_rew = metrics["eval_episode_reward"]
+          best_eval_rew_std = metrics["eval_episode_reward_std"]
           best_eval_params = params
 
   total_steps = current_step
