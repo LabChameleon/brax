@@ -40,6 +40,7 @@ from brax.v1 import envs as envs_v1
 import flax
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 
 Metrics = types.Metrics
@@ -133,6 +134,9 @@ def train(
     randomization_fn: Optional[
         Callable[[base.System, jnp.ndarray], Tuple[base.System, base.System]]
     ] = None,
+    return_best_eval_rew_and_params: bool = False,
+    best_eval_reward_weight: float = 1.0,
+    best_eval_stability_weight: float = 0.0,
 ):
   """SAC training."""
   process_id = jax.process_index()
@@ -187,6 +191,12 @@ def train(
       action_repeat=action_repeat,
       randomization_fn=v_randomization_fn,
   )
+
+  if return_best_eval_rew_and_params:
+      best_eval_performance = -np.inf
+      best_eval_rew = None
+      best_eval_rew_std = None
+      best_eval_params = None
 
   obs_size = env.observation_size
   action_size = env.action_size
@@ -459,6 +469,15 @@ def train(
         training_metrics={})
     logging.info(metrics)
     progress_fn(0, metrics)
+    if return_best_eval_rew_and_params:
+        performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
+                      best_eval_stability_weight * metrics['eval/episode_reward_std']
+        if best_eval_performance < performance:
+            best_eval_performance = performance
+            best_eval_rew = metrics["eval/episode_reward"]
+            best_eval_rew_std = metrics["eval/episode_reward_std"]
+            pmap.assert_is_replicated(training_state)
+            best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
 
   # Create and initialize the replay buffer.
   t = time.time()
@@ -501,6 +520,13 @@ def train(
           training_metrics)
       logging.info(metrics)
       progress_fn(current_step, metrics)
+      performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
+                    best_eval_stability_weight * metrics['eval/episode_reward_std']
+      if best_eval_performance < performance:
+          best_eval_performance = performance
+          best_eval_rew = metrics["eval/episode_reward"]
+          best_eval_rew_std = metrics["eval/episode_reward_std"]
+          best_eval_params = params
 
   total_steps = current_step
   assert total_steps >= num_timesteps
@@ -513,4 +539,14 @@ def train(
   pmap.assert_is_replicated(training_state)
   logging.info('total steps: %s', total_steps)
   pmap.synchronize_hosts()
-  return (make_policy, params, metrics)
+  if not return_best_eval_rew_and_params:
+      return (make_policy, params, metrics)
+  else:
+      return (
+          make_policy,
+          best_eval_params,
+          metrics,
+          best_eval_performance,
+          best_eval_rew,
+          best_eval_rew_std,
+      )
