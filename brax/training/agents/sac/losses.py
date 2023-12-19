@@ -32,7 +32,7 @@ def make_losses(sac_network: sac_networks.SACNetworks, reward_scaling: float,
                 discounting: float, action_size: int):
   """Creates the SAC losses."""
 
-  target_entropy = -0.5 * action_size
+  target_entropy = -action_size
   policy_network = sac_network.policy_network
   q_network = sac_network.q_network
   parametric_action_distribution = sac_network.parametric_action_distribution
