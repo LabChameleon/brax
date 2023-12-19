@@ -526,7 +526,7 @@ def train(
           best_eval_performance = performance
           best_eval_rew = metrics["eval/episode_reward"]
           best_eval_rew_std = metrics["eval/episode_reward_std"]
-          best_eval_params = params
+          best_eval_params = _unpmap((training_state.normalizer_params, training_state.policy_params))
 
   total_steps = current_step
   assert total_steps >= num_timesteps
