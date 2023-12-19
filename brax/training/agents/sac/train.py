@@ -477,7 +477,7 @@ def train(
             best_eval_rew = metrics["eval/episode_reward"]
             best_eval_rew_std = metrics["eval/episode_reward_std"]
             pmap.assert_is_replicated(training_state)
-            best_eval_params = _unpmap((training_state.normalizer_params, training_state.params.policy))
+            best_eval_params = _unpmap((training_state.normalizer_params, training_state.policy_params))
 
   # Create and initialize the replay buffer.
   t = time.time()
