@@ -520,13 +520,14 @@ def train(
           training_metrics)
       logging.info(metrics)
       progress_fn(current_step, metrics)
-      performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
-                    best_eval_stability_weight * metrics['eval/episode_reward_std']
-      if best_eval_performance < performance:
-          best_eval_performance = performance
-          best_eval_rew = metrics["eval/episode_reward"]
-          best_eval_rew_std = metrics["eval/episode_reward_std"]
-          best_eval_params = _unpmap((training_state.normalizer_params, training_state.policy_params))
+      if return_best_eval_rew_and_params:
+          performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
+                        best_eval_stability_weight * metrics['eval/episode_reward_std']
+          if best_eval_performance < performance:
+              best_eval_performance = performance
+              best_eval_rew = metrics["eval/episode_reward"]
+              best_eval_rew_std = metrics["eval/episode_reward_std"]
+              best_eval_params = _unpmap((training_state.normalizer_params, training_state.policy_params))
 
   total_steps = current_step
   assert total_steps >= num_timesteps

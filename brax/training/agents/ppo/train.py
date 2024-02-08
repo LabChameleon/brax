@@ -414,11 +414,12 @@ def train(
       policy_params_fn(current_step, make_policy, params)
       performance = best_eval_reward_weight * metrics['eval/episode_reward'] - \
                     best_eval_stability_weight * metrics['eval/episode_reward_std']
-      if best_eval_performance < performance:
-          best_eval_performance = performance
-          best_eval_rew = metrics["eval/episode_reward"]
-          best_eval_rew_std = metrics["eval/episode_reward_std"]
-          best_eval_params = params
+      if return_best_eval_rew_and_params:
+          if best_eval_performance < performance:
+              best_eval_performance = performance
+              best_eval_rew = metrics["eval/episode_reward"]
+              best_eval_rew_std = metrics["eval/episode_reward_std"]
+              best_eval_params = params
 
   total_steps = current_step
   assert total_steps >= num_timesteps
